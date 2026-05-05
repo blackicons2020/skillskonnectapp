@@ -1,0 +1,99 @@
+
+import React from 'react';
+import { Cleaner } from '../types';
+import { StarIcon, MapPinIcon, RocketLaunchIcon, CheckBadgeIcon } from './icons';
+import { getPricingModel, getCountryCurrency } from '../constants/countries';
+
+interface CleanerCardProps {
+  cleaner: Cleaner;
+  onClick: () => void;
+}
+
+export const CleanerCard: React.FC<CleanerCardProps> = ({ cleaner, onClick }) => {
+  const locationString = cleaner.city === 'Other' && cleaner.otherCity ? cleaner.otherCity : cleaner.city;
+  const locationDisplay = [cleaner.country || 'Nigeria', cleaner.state, locationString].filter(Boolean).join(', ');
+  const pricingModel = getPricingModel(cleaner.country || 'Nigeria');
+  const currencySymbol = getCountryCurrency(cleaner.country || 'Nigeria').symbol;
+  
+  return (
+    <div
+      onClick={onClick}
+      className="bg-white rounded-xl shadow-md overflow-hidden transform hover:-translate-y-1 hover:shadow-xl transition-all duration-300 flex flex-col cursor-pointer"
+    >
+      <div className="relative">
+        <img 
+            className="h-56 w-full object-cover" 
+            src={cleaner.photoUrl || 'https://ui-avatars.com/api/?name=' + encodeURIComponent(cleaner.name) + '&size=400&background=007A5E&color=fff'} 
+            alt={cleaner.name} 
+            onError={(e) => { e.currentTarget.src = 'https://ui-avatars.com/api/?name=' + encodeURIComponent(cleaner.name) + '&size=400&background=007A5E&color=fff'; }}
+        />
+        <div className="absolute top-2 right-2 bg-black bg-opacity-50 text-white px-2 py-1 rounded-full text-xs font-semibold flex items-center gap-1">
+          <StarIcon className="w-4 h-4 text-yellow-400" />
+          <span>{cleaner.rating.toFixed(1)}</span>
+        </div>
+        {cleaner.subscriptionTier !== 'Free' && (
+             <div className={`absolute top-2 left-2 text-white px-2.5 py-1 rounded-full text-xs font-bold flex items-center gap-1 shadow-lg ${
+                cleaner.subscriptionTier === 'Premium' ? 'bg-gradient-to-r from-purple-500 to-indigo-600' :
+                cleaner.subscriptionTier === 'Pro' ? 'bg-gradient-to-r from-blue-500 to-cyan-500' :
+                cleaner.subscriptionTier === 'Standard' ? 'bg-gradient-to-r from-green-500 to-teal-500' : ''
+             }`}>
+                <RocketLaunchIcon className="w-4 h-4" />
+                <span>{cleaner.subscriptionTier.toUpperCase()}</span>
+             </div>
+        )}
+      </div>
+      <div className="p-4 flex flex-col flex-grow">
+        <div className="flex items-center gap-1.5">
+            <h3 className="text-lg font-bold text-dark">{cleaner.name}</h3>
+            {cleaner.isVerified && <CheckBadgeIcon className="w-5 h-5 text-secondary" />}
+        </div>
+        <p className="text-sm text-gray-600 font-medium flex items-center">
+            <MapPinIcon className="w-4 h-4 mr-1 text-gray-400 flex-shrink-0" />
+            <span className="truncate">{locationDisplay}</span>
+        </p>
+        {cleaner.experience > 0 && (
+            <p className="text-xs text-gray-500 mt-1">
+                💼 {cleaner.experience} {cleaner.experience === 1 ? 'year' : 'years'} experience
+            </p>
+        )}
+        {cleaner.serviceTypes && cleaner.serviceTypes.length > 0 && (
+            <div className="flex flex-wrap gap-1 mt-2">
+                {cleaner.serviceTypes.slice(0, 2).map((service, idx) => (
+                    <span key={idx} className="inline-block bg-blue-50 text-blue-700 text-xs px-2 py-0.5 rounded-full">
+                        {service}
+                    </span>
+                ))}
+                {cleaner.serviceTypes.length > 2 && (
+                    <span className="text-xs text-gray-400 self-center">
+                        +{cleaner.serviceTypes.length - 2} more
+                    </span>
+                )}
+            </div>
+        )}
+         <div className="mt-2">
+            {pricingModel === 'hourly' ? (
+                cleaner.chargeHourly ? (
+                    <>
+                        <span className="text-xl font-bold text-primary">
+                            {currencySymbol}{cleaner.chargeHourly.toLocaleString()}
+                        </span>
+                        <span className="text-xs text-gray-500 ml-1">/hour</span>
+                    </>
+                ) : (
+                    <span className="text-base font-semibold text-primary">Amount: Not fixed</span>
+                )
+            ) : (
+                <span className="text-base font-semibold text-primary">Amount: Not fixed</span>
+            )}
+        </div>
+        <div className="mt-auto pt-4">
+              <button
+                className="w-full bg-primary text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-secondary transition-colors"
+              >
+                Book Now
+              </button>
+        </div>
+      </div>
+    </div>
+  );
+};

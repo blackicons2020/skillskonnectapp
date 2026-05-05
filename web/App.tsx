@@ -8,7 +8,7 @@ import { SubscriptionPaymentDetailsModal } from './components/SubscriptionPaymen
 import { StarIcon, ChatBubbleLeftRightIcon } from './components/icons';
 import { ErrorBoundary } from './components/ErrorBoundary';
 
-import { User, Cleaner, View, SubscriptionPlan, Review, Job, Booking } from './types';
+import { User, Cleaner, View, SubscriptionPlan, Review, Job } from './types';
 import { apiService, getStoredToken, storeToken, clearToken } from './services/apiService';
 import { paymentService } from './services/paymentService';
 import { App as CapacitorApp } from '@capacitor/app';
@@ -30,7 +30,6 @@ const HelpCenterPage = React.lazy(() => import('./components/HelpCenterPage').th
 const ContactPage = React.lazy(() => import('./components/ContactPage').then(module => ({ default: module.ContactPage })));
 const TermsPage = React.lazy(() => import('./components/TermsPage').then(module => ({ default: module.TermsPage })));
 const PrivacyPage = React.lazy(() => import('./components/PrivacyPage').then(module => ({ default: module.PrivacyPage })));
-const DeleteAccountPage = React.lazy(() => import('./components/DeleteAccountPage').then(module => ({ default: module.DeleteAccountPage })));
 const SearchResultsPage = React.lazy(() => import('./components/SearchResultsPage').then(module => ({ default: module.SearchResultsPage })));
 
 
@@ -57,7 +56,7 @@ const CleanerProfile: React.FC<CleanerProfileProps> = ({ cleaner, onBook }) => {
                         onClick={() => onBook(cleaner)}
                         className="w-full max-w-xs bg-primary text-white p-3 rounded-lg font-bold hover:bg-secondary"
                     >
-                        Book this Professional
+                        Book this Cleaner
                     </button>
                 </div>
             </div>
@@ -79,42 +78,13 @@ const LoadingSpinner = () => (
     </div>
 );
 
-// ─── App store review accounts ────────────────────────────────────────────
-// These accounts bypass subscription requirements so app reviewers have full
-// access to all features. Regular users are unaffected.
-const REVIEW_ACCOUNT_EMAILS = [
-    'reviewer.client@skillskonnect.com',
-    'reviewer.pro@skillskonnect.com',
-];
-
-const applyReviewOverrides = (userData: User): User => {
-    if (REVIEW_ACCOUNT_EMAILS.includes((userData.email || '').toLowerCase())) {
-        return {
-            ...userData,
-            subscriptionTier: 'Premium',
-            isVerified: true,
-            subscriptionExpiry: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
-        };
-    }
-    return userData;
-};
-
 const App: React.FC = () => {
     const [view, setView] = useState<View>('landing');
     const [viewHistory, setViewHistory] = useState<View[]>([]);
-    const [user, setUserRaw] = useState<User | null>(null);
-    // Wrapper: always applies reviewer overrides before storing user state
-    const setUser = (u: User | null | ((prev: User | null) => User | null)) => {
-        if (typeof u === 'function') {
-            setUserRaw(prev => { const next = u(prev); return next ? applyReviewOverrides(next) : null; });
-        } else {
-            setUserRaw(u ? applyReviewOverrides(u) : null);
-        }
-    };
+    const [user, setUser] = useState<User | null>(null);
     const [allUsers, setAllUsers] = useState<User[]>([]);
     const [allCleaners, setAllCleaners] = useState<Cleaner[]>([]);
     const [allJobs, setAllJobs] = useState<Job[]>([]);
-    const [allBookings, setAllBookings] = useState<Booking[]>([]);
     const [selectedCleaner, setSelectedCleaner] = useState<Cleaner | null>(null);
 
     const [initialAuthTab, setInitialAuthTab] = useState<'login' | 'signup'>('login');
@@ -124,7 +94,6 @@ const App: React.FC = () => {
     const [isLoading, setIsLoading] = useState(true);
     const [isDataLoading, setIsDataLoading] = useState(false);
     const [appError, setAppError] = useState<string | null>(null);
-    const [adminDataError, setAdminDataError] = useState<string | null>(null);
 
     // Reset-password token extracted from the URL on first load
     const [resetToken, setResetToken] = useState<string | null>(null);
@@ -150,29 +119,18 @@ const App: React.FC = () => {
     // Refetches all app data. Used after state-changing actions.
     const refetchAllData = async (currentUser: User) => {
         setIsDataLoading(true);
-        setAdminDataError(null);
         try {
-            const [cleaners, users, jobs, bookingsResult] = await Promise.allSettled([
+            const [cleaners, users, jobs] = await Promise.allSettled([
                 apiService.getAllCleaners(),
                 currentUser.isAdmin ? apiService.adminGetAllUsers() : Promise.resolve([]),
-                apiService.getAllJobs(),
-                apiService.getBookings()
+                apiService.getAllJobs()
             ]);
             if (cleaners.status === 'fulfilled') setAllCleaners(cleaners.value);
             else console.error('Failed to fetch cleaners:', (cleaners as any).reason);
-            if (users.status === 'fulfilled') { setAllUsers(users.value); setAdminDataError(null); }
-            else if (currentUser.isAdmin) {
-                const errMsg = (users as PromiseRejectedResult).reason?.message || 'Failed to load users. Please retry.';
-                console.error('Failed to fetch users:', errMsg);
-                setAdminDataError(errMsg);
-            }
+            if (users.status === 'fulfilled') setAllUsers(users.value);
+            else console.error('Failed to fetch users:', (users as any).reason);
             if (jobs.status === 'fulfilled') setAllJobs(jobs.value);
             else console.error('Failed to fetch jobs:', (jobs as any).reason);
-            if (bookingsResult.status === 'fulfilled') {
-                setAllBookings(bookingsResult.value);
-            } else {
-                console.error('Failed to fetch bookings:', (bookingsResult as any).reason);
-            }
         } finally {
             setIsDataLoading(false);
         }
@@ -185,16 +143,6 @@ const App: React.FC = () => {
             setAllJobs(jobs);
         } catch (error: any) {
             console.error("Failed to refresh jobs:", error);
-        }
-    };
-
-    // Refetch bookings (used after booking, cancel, review, etc.)
-    const refetchBookings = async () => {
-        try {
-            const bookings = await apiService.getBookings();
-            setAllBookings(bookings);
-        } catch (error: any) {
-            console.error("Failed to refresh bookings:", error);
         }
     };
 
@@ -244,27 +192,6 @@ const App: React.FC = () => {
                 return;
             }
 
-            // Detect direct /help URL
-            if (window.location.pathname === '/help') {
-                setView('help');
-                setIsLoading(false);
-                return;
-            }
-
-            // Detect direct /contact URL
-            if (window.location.pathname === '/contact') {
-                setView('contact');
-                setIsLoading(false);
-                return;
-            }
-
-            // Detect direct /delete-account URL
-            if (window.location.pathname === '/delete-account') {
-                setView('deleteAccount');
-                setIsLoading(false);
-                return;
-            }
-
             // Detect password-reset link: ?action=resetPassword&token=<raw>
             const urlParams = new URLSearchParams(window.location.search);
             const action = urlParams.get('action');
@@ -310,16 +237,14 @@ const App: React.FC = () => {
 
                         if (verified) {
                             // Refresh user data to get the updated subscription
+                            // getMe already includes bookingHistory and reviewsData from the DB
                             const updatedUser = await apiService.getMe();
-                            const bookings = await apiService.getBookings().catch(() => []);
-                            setAllBookings(bookings);
                             await handleAuthSuccess(updatedUser, true, false);
                             alert(`✓ Payment successful! Your subscription to the ${updatedUser.subscriptionTier || 'selected'} plan is now active.`);
                         } else {
                             // Payment verification failed
+                            // getMe already includes bookingHistory and reviewsData from the DB
                             const meResult = await apiService.getMe();
-                            const bookings = await apiService.getBookings().catch(() => []);
-                            setAllBookings(bookings);
                             await handleAuthSuccess(meResult, true, false);
                             alert('Payment could not be verified. If you were charged, please contact support.');
                         }
@@ -346,18 +271,19 @@ const App: React.FC = () => {
             const tokenAtStart = getStoredToken();
 
             if (tokenAtStart) {
-                // Fetch user identity + public data in ONE parallel batch (single cold-start wait)
-                const [meResolved, cleaners, jobs, bookingsResult] = await Promise.allSettled([
-                    apiService.getMe(),
+                // Fetch everything needed in one parallel batch
+                // getMe already returns bookingHistory and reviewsData from the DB
+                const [cleaners, jobs, meResult] = await Promise.allSettled([
                     apiService.getAllCleaners(),
                     apiService.getAllJobs(),
-                    apiService.getBookings(),
+                    apiService.getMe(),
                 ]);
 
                 if (cleaners.status === 'fulfilled') setAllCleaners(cleaners.value);
                 if (jobs.status === 'fulfilled') setAllJobs(jobs.value as any);
 
                 // Guard 1: abort if a fresh login started while we were fetching
+                // (the login stores a new token before calling handleAuthSuccess)
                 if (loginInProgressRef.current) {
                     setIsLoading(false);
                     return;
@@ -370,27 +296,12 @@ const App: React.FC = () => {
                     return;
                 }
 
-                if (meResolved.status === 'fulfilled') {
-                    const currentUser = meResolved.value;
-                    if (bookingsResult.status === 'fulfilled') {
-                        setAllBookings(bookingsResult.value as any);
-                    }
-
-                    // If admin, fetch admin users in background (don't block navigation)
-                    if (currentUser.isAdmin) {
-                        apiService.adminGetAllUsers().then(users => {
-                            setAllUsers(users);
-                            setAdminDataError(null);
-                        }).catch(err => {
-                            setAdminDataError(err?.message || 'Failed to load users.');
-                        });
-                    }
-
+                if (meResult.status === 'fulfilled') {
+                    const currentUser = meResult.value;
                     // shouldNavigate=true: restore the user to their correct dashboard
-                    // skipRefetch=true: we already fetched data above
                     await handleAuthSuccess(currentUser, true, true);
                 } else {
-                    const reason = (meResolved as any).reason;
+                    const reason = (meResult as any).reason;
                     const errorMsg: string = reason?.message || '';
                     // Only clear the token if it's definitively invalid (401). For network/server
                     // errors (cold start, timeout, etc.) keep the token and show landing page.
@@ -423,6 +334,27 @@ const App: React.FC = () => {
         checkSession();
     }, []);
 
+    /** Retry loading public data after a connection failure. */
+    const handleRetryFetch = async () => {
+        setAppError(null);
+        setIsDataLoading(true);
+        try {
+            const [cleaners, jobs] = await Promise.allSettled([
+                apiService.getAllCleaners(),
+                apiService.getAllJobs(),
+            ]);
+            if (cleaners.status === 'fulfilled') {
+                setAllCleaners(cleaners.value);
+            } else {
+                const errMsg = (cleaners as any).reason?.message || 'Unable to load professionals.';
+                setAppError(errMsg);
+            }
+            if (jobs.status === 'fulfilled') setAllJobs(jobs.value as any);
+        } finally {
+            setIsDataLoading(false);
+        }
+    };
+
     const handleNavigate = (targetView: View) => {
         setViewHistory(prev => [...prev, view]); // push current view onto history stack
         setView(targetView);
@@ -430,18 +362,12 @@ const App: React.FC = () => {
         // Sync URL for the Privacy Policy page
         if (targetView === 'privacy') {
             window.history.pushState({}, document.title, '/privacy');
-        } else if (targetView === 'help') {
-            window.history.pushState({}, document.title, '/help');
-        } else if (targetView === 'contact') {
-            window.history.pushState({}, document.title, '/contact');
-        } else if (targetView === 'deleteAccount') {
-            window.history.pushState({}, document.title, '/delete-account');
-        } else if (view === 'privacy' || view === 'help' || view === 'contact' || view === 'deleteAccount') {
+        } else if (view === 'privacy') {
             window.history.replaceState({}, document.title, '/');
         }
         // Reset dashboard tab to default when navigating normally
         if (targetView === 'clientDashboard') setDashboardInitialTab('find');
-        if (targetView === 'cleanerDashboard') setDashboardInitialTab('' as any); // Let Dashboard choose based on profile completeness
+        if (targetView === 'cleanerDashboard') setDashboardInitialTab('jobs');
     };
 
     const handleGoBack = () => {
@@ -450,7 +376,7 @@ const App: React.FC = () => {
         setViewHistory(prev => prev.slice(0, -1));
         setView(previousView);
         // Restore base URL when leaving the Privacy page
-        if (view === 'privacy' || view === 'help' || view === 'contact' || view === 'deleteAccount') {
+        if (view === 'privacy') {
             window.history.replaceState({}, document.title, '/');
         }
         window.scrollTo(0, 0);
@@ -506,12 +432,7 @@ const App: React.FC = () => {
     };
 
     const handleAuthSuccess = async (userData: User, shouldNavigate = true, skipRefetch = false) => {
-        setUser(userData); // setUser wrapper applies review overrides automatically
-        // Immediately populate allBookings from the login/session-restore response so bookings
-        // show right away without waiting for the background refetchAllData to complete.
-        if (userData.bookingHistory && userData.bookingHistory.length > 0) {
-            setAllBookings(userData.bookingHistory as any);
-        }
+        setUser(userData);
 
         // Navigate IMMEDIATELY so the auth modal disappears right away
         if (shouldNavigate) {
@@ -540,13 +461,9 @@ const App: React.FC = () => {
         if (skipRefetch) {
             if (userData.isAdmin) {
                 setIsDataLoading(true);
-                setAdminDataError(null);
                 apiService.adminGetAllUsers()
-                    .then(users => { setAllUsers(users); setAdminDataError(null); })
-                    .catch(e => {
-                        console.error('Failed to fetch all users:', e);
-                        setAdminDataError(e.message || 'Failed to load users. Please retry.');
-                    })
+                    .then(users => setAllUsers(users))
+                    .catch(e => console.error('Failed to fetch all users:', e))
                     .finally(() => setIsDataLoading(false));
             }
         } else {
@@ -599,7 +516,6 @@ const App: React.FC = () => {
         apiService.logout();
         setUser(null);
         setAllUsers([]);
-        setAllBookings([]);
         clearToken();
         setViewHistory([]);
         setCleanerToRememberForBooking(null);
@@ -655,25 +571,16 @@ const App: React.FC = () => {
                 await refetchAllData(user || updatedUser);
             } else {
                 // Refresh cleaners list so landing page cards update immediately
-                const refreshPromises: Promise<any>[] = [];
                 if (updatedUser.role === 'cleaner' || (updatedUser as any).userType === 'worker') {
-                    refreshPromises.push(
-                        apiService.getAllCleaners()
-                            .then(cleaners => setAllCleaners(cleaners))
-                            .catch(e => console.error('Failed to refresh cleaners:', e))
-                    );
+                    apiService.getAllCleaners()
+                        .then(cleaners => setAllCleaners(cleaners))
+                        .catch(e => console.error('Failed to refresh cleaners:', e));
                 }
                 // Refetch jobs so workers can see the new/updated jobs
                 if (jobsChanged && (updatedUser.role === 'client' || (updatedUser as any).userType === 'client')) {
-                    refreshPromises.push(
-                        apiService.getAllJobs()
-                            .then(jobs => setAllJobs(jobs))
-                            .catch(e => console.error('Failed to refresh jobs:', e))
-                    );
-                }
-                // Wait for all refreshes to complete before showing success alert
-                if (refreshPromises.length > 0) {
-                    await Promise.all(refreshPromises);
+                    apiService.getAllJobs()
+                        .then(jobs => setAllJobs(jobs))
+                        .catch(e => console.error('Failed to refresh jobs:', e));
                 }
             }
 
@@ -700,47 +607,30 @@ const App: React.FC = () => {
         }
     };
 
-    const handleConfirmBooking = async (cleaner: Cleaner, date: string, time: string, serviceDescription: string) => {
+    const handleConfirmBooking = async (cleaner: Cleaner) => {
         if (!user) return;
         try {
             const baseAmount = cleaner.chargeHourly || cleaner.chargeDaily || cleaner.chargePerContract || 5000;
             const bookingData = {
                 cleanerId: cleaner.id,
                 service: cleaner.serviceTypes[0] || 'General Cleaning',
-                date,
+                date: new Date().toISOString().split('T')[0],
                 amount: baseAmount,
                 paymentMethod: 'Direct',
-                serviceDescription,
             };
             const newBooking = await apiService.createBooking(bookingData);
 
-            // Refresh allBookings so both dashboards see the new booking
-            await refetchBookings();
-
-            // Send a notification message to the professional via in-app chat
+            // Refresh full user data from backend to ensure bookingHistory is in sync
             try {
-                const chat = await apiService.createChat(user.id, cleaner.id, user.fullName || user.email, cleaner.name);
-                const clientLocation = [user.streetAddress, user.city, user.state].filter(Boolean).join(', ') || user.city || user.state || 'Not specified';
-                const formattedDate = new Date(date).toLocaleDateString('en-NG', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
-                const formattedTime = new Date(`2000-01-01T${time}`).toLocaleTimeString('en-NG', { hour: '2-digit', minute: '2-digit' });
-                const notificationMessage =
-                    `Hello ${cleaner.name},\n\n` +
-                    `You have a new booking request from ${user.fullName || user.email}.\n\n` +
-                    `📋 Details:\n` +
-                    `• Client: ${user.fullName || user.email}\n` +
-                    `• Location: ${clientLocation}\n` +
-                    `• Service: ${cleaner.serviceTypes[0] || 'General Cleaning'}\n` +
-                    `• Job Description: ${serviceDescription}\n` +
-                    `• Date: ${formattedDate}\n` +
-                    `• Time: ${formattedTime}\n\n` +
-                    `Please reply to this message to confirm whether you accept or decline this booking.`;
-                await apiService.sendMessage(chat.id, user.id, notificationMessage);
-            } catch {
-                // Non-critical — booking already created, just skip notification
+                const freshUser = await apiService.getMe();
+                setUser(freshUser);
+            } catch (error) {
+                // Fallback to local state update if full refresh fails
+                setUser(prev => prev ? ({ ...prev, bookingHistory: [...(prev.bookingHistory || []), newBooking] }) : null);
             }
 
             handleCloseBookingModals();
-            alert('Booking created successfully! The professional has been notified via in-app message.');
+            alert('Booking created successfully!');
             handleNavigate('clientDashboard');
         } catch (error: any) {
             alert(`Booking failed: ${error.message}`);
@@ -751,7 +641,14 @@ const App: React.FC = () => {
         try {
             const cancelledBooking = await apiService.cancelBooking(bookingId);
 
-            await refetchBookings();
+            // Refresh full user data from backend to ensure sync
+            try {
+                const freshUser = await apiService.getMe();
+                setUser(freshUser);
+            } catch (error) {
+                // Fallback to local state update if full refresh fails
+                setUser(prev => prev ? ({ ...prev, bookingHistory: prev.bookingHistory?.map(b => b.id === bookingId ? cancelledBooking : b) }) : null);
+            }
 
             alert("Booking cancelled successfully.");
         } catch (e: any) { alert(`Cancellation failed: ${e.message}`); }
@@ -761,7 +658,14 @@ const App: React.FC = () => {
         try {
             const completedBooking = await apiService.markJobComplete(bookingId);
 
-            await refetchBookings();
+            // Refresh full user data from backend to ensure sync
+            try {
+                const freshUser = await apiService.getMe();
+                setUser(freshUser);
+            } catch (error) {
+                // Fallback to local state update if full refresh fails
+                setUser(prev => prev ? ({ ...prev, bookingHistory: prev.bookingHistory?.map(b => b.id === bookingId ? completedBooking : b) }) : null);
+            }
         } catch (e: any) { alert(`Failed to mark as complete: ${e.message}`); }
     };
 
@@ -769,7 +673,14 @@ const App: React.FC = () => {
         try {
             await apiService.submitReview(bookingId, { ...reviewData, cleanerId });
 
-            await refetchBookings();
+            // Refresh full user data from backend (bookingHistory + reviewsData)
+            try {
+                const freshUser = await apiService.getMe();
+                setUser(freshUser);
+            } catch (error) {
+                // Fallback to local state update if full refresh fails
+                setUser(prev => prev ? ({ ...prev, bookingHistory: prev.bookingHistory?.map(b => b.id === bookingId ? { ...b, reviewSubmitted: true } : b) }) : null);
+            }
 
             alert("Review submitted successfully!");
         } catch (e: any) { alert(`Failed to submit review: ${e.message}`); }
@@ -882,12 +793,10 @@ const App: React.FC = () => {
                         allCleaners={allCleaners}
                         allUsers={allUsers}
                         allJobs={allJobs}
-                        allBookings={allBookings}
                         onSelectCleaner={handleSelectCleaner}
                         initialFilters={initialFilters}
                         clearInitialFilters={() => setInitialFilters(null)}
                         onNavigate={handleNavigate}
-                        onLogout={handleLogout}
                         onCancelBooking={handleCancelBooking}
                         onReviewSubmit={handleReviewSubmit}
                         onApproveJobCompletion={handleApproveJobCompletion}
@@ -906,10 +815,8 @@ const App: React.FC = () => {
                         user={user}
                         onUpdateUser={handleUpdateUser}
                         onNavigate={handleNavigate}
-                        onLogout={handleLogout}
                         initialTab={dashboardInitialTab as any}
                         allJobs={allJobs}
-                        allBookings={allBookings}
                     />;
                 }
                 handleNavigate('auth');
@@ -921,8 +828,6 @@ const App: React.FC = () => {
                         allUsers={allUsers}
                         allJobs={allJobs}
                         isDataLoading={isDataLoading}
-                        dataLoadError={adminDataError}
-                        onRetryLoadData={() => { if (user) refetchAllData(user); }}
                         onUpdateUser={handleUpdateUser}
                         onDeleteUser={handleDeleteUser}
                         onMarkAsPaid={handleMarkAsPaid}
@@ -965,7 +870,6 @@ const App: React.FC = () => {
             case 'contact': return withBack('Back', <ContactPage />);
             case 'terms': return withBack('Back', <TermsPage />);
             case 'privacy': return withBack('Back', <PrivacyPage />);
-            case 'deleteAccount': return withBack('Back', <DeleteAccountPage />);
             case 'landing':
             default:
                 return <LandingPage
@@ -975,6 +879,7 @@ const App: React.FC = () => {
                     onSelectCleaner={handleSelectCleaner}
                     onSearch={handleSearchFromHero}
                     appError={appError}
+                    onRetry={handleRetryFetch}
                 />;
         }
     };

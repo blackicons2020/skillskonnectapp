@@ -1,0 +1,561 @@
+
+import { User, Cleaner, Booking, AdminRole, Chat, Message, SupportTicket, Review, Job, AppNotification } from '../types';
+import { Network } from '@capacitor/network';
+
+// ==========================================
+// CONFIGURATION
+// ==========================================
+// The production API is shared between the web app (https://skillskonnect.online/)
+// and the mobile app (Capacitor). Both read from the same MongoDB on Render.
+const PRODUCTION_API_URL = 'https://skillskonnect.online/api';
+
+const getApiUrl = () => {
+    try {
+        const env = (import.meta as any).env;
+        // Running inside Capacitor native shell: hostname is 'localhost' but
+        // there is no real local server — always use the production API.
+        const isCapacitor =
+            typeof (window as any).Capacitor !== 'undefined' ||
+            (typeof location !== 'undefined' &&
+                (location.protocol === 'capacitor:' ||
+                    (location.protocol === 'https:' && location.hostname === 'localhost')));
+
+        if (isCapacitor) {
+            return PRODUCTION_API_URL;
+        }
+
+        if (env) {
+            // In production on Vercel, always use the relative path for the web app.
+            if (env.PROD && !isCapacitor) {
+                return '/api';
+            }
+            // Use VITE_API_URL if set (for production/mobile deployments), otherwise use localhost
+            return env.VITE_API_URL || (env.PROD ? '/api' : 'http://localhost:5000/api');
+        }
+    } catch (e) {
+        // Ignore errors if import.meta is not supported
+    }
+    // Default fallback
+    return 'http://localhost:5000/api';
+};
+
+const API_URL = getApiUrl();
+console.log('[API] Using API URL:', API_URL);
+
+// ==========================================
+// API HELPERS
+// ==========================================
+
+/**
+ * Wrapper around fetch that retries on network failures.
+ * Checks device connectivity first, then retries on TypeError / 5xx.
+ */
+const fetchWithRetry = async (
+    input: RequestInfo,
+    init?: RequestInit,
+    retries = 3,
+    delayMs = 3000,
+): Promise<Response> => {
+    // Check network connectivity once before the first attempt
+    try {
+        const status = await Network.getStatus();
+        if (!status.connected) {
+            throw new Error('No internet connection. Please check your network settings and try again.');
+        }
+    } catch (e: any) {
+        // If Network plugin isn't available (web), skip the check
+        if (e.message?.includes('No internet')) throw e;
+    }
+
+    for (let attempt = 0; attempt <= retries; attempt++) {
+        try {
+            console.log(`[API] Attempt ${attempt + 1}/${retries + 1}: ${typeof input === 'string' ? input : (input as Request).url}`);
+            const response = await fetch(input, init);
+            if (response.status >= 500 && attempt < retries) {
+                console.warn(`[API] Server error ${response.status}, retrying in ${delayMs * (attempt + 1)}ms...`);
+                await new Promise(r => setTimeout(r, delayMs * (attempt + 1)));
+                continue;
+            }
+            return response;
+        } catch (err: any) {
+            console.error(`[API] Fetch error (attempt ${attempt + 1}):`, err?.message || err);
+            if (attempt < retries) {
+                await new Promise(r => setTimeout(r, delayMs * (attempt + 1)));
+                continue;
+            }
+            // Enhance the error message for the user
+            throw new Error(
+                `Unable to reach the server (${err?.message || 'network error'}). Please check your internet connection.`
+            );
+        }
+    }
+    return fetch(input, init);
+};
+
+const STORAGE_KEY = 'skillskonnect_token';
+
+/** Read token from whichever store it was saved in. */
+export const getStoredToken = (): string | null =>
+    localStorage.getItem(STORAGE_KEY) || sessionStorage.getItem(STORAGE_KEY);
+
+/** Persist the token. Always uses localStorage so the session survives browser restarts. */
+export const storeToken = (token: string, rememberMe: boolean) => {
+    // Always store in localStorage regardless of rememberMe so users stay logged in
+    localStorage.setItem(STORAGE_KEY, token);
+    sessionStorage.removeItem(STORAGE_KEY);
+};
+
+/** Remove the token from both stores. */
+export const clearToken = () => {
+    localStorage.removeItem(STORAGE_KEY);
+    sessionStorage.removeItem(STORAGE_KEY);
+};
+
+const getHeaders = () => {
+    const token = getStoredToken();
+    const headers: HeadersInit = {
+        'Content-Type': 'application/json',
+    };
+    if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+    }
+    return headers;
+};
+
+const handleResponse = async (response: Response) => {
+    if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || errorData.error || `Request failed with status ${response.status}`);
+    }
+    if (response.status === 204) return null;
+    return response.json();
+};
+
+const fileToBase64 = async (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = (event) => {
+            const img = new Image();
+            img.src = event.target?.result as string;
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                const MAX_WIDTH = 800;
+                const scaleSize = MAX_WIDTH / img.width;
+                const finalScale = scaleSize < 1 ? scaleSize : 1;
+                canvas.width = img.width * finalScale;
+                canvas.height = img.height * finalScale;
+                const ctx = canvas.getContext('2d');
+                if (ctx) {
+                    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                    const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+                    resolve(dataUrl);
+                } else {
+                    reject(new Error("Failed to get canvas context"));
+                }
+            };
+            img.onerror = (err) => reject(err);
+        };
+        reader.onerror = (err) => reject(err);
+    });
+};
+
+// ==========================================
+// API SERVICE
+// ==========================================
+
+export const apiService = {
+    login: async (email: string, password?: string): Promise<{ token: string; user: User }> => {
+        const response = await fetch(`${API_URL}/auth/login`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password }),
+        });
+        return handleResponse(response);
+    },
+
+    socialLogin: async (provider: 'google' | 'apple', email?: string, name?: string): Promise<{ token: string; user: User }> => {
+        // Since mock data is removed, and real backend OAuth isn't implemented in the provided backend code,
+        // we throw an error here to indicate this feature requires backend integration.
+        throw new Error("Social login requires backend configuration.");
+    },
+
+    logout: async () => {
+        clearToken();
+    },
+
+    forgotPassword: async (email: string): Promise<{ message: string }> => {
+        const response = await fetch(`${API_URL}/auth/forgot-password`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email }),
+        });
+        return handleResponse(response);
+    },
+
+    resetPassword: async (token: string, password: string): Promise<{ message: string }> => {
+        const response = await fetch(`${API_URL}/auth/reset-password`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token, password }),
+        });
+        return handleResponse(response);
+    },
+
+    verifyEmail: async (token: string): Promise<{ message: string }> => {
+        const response = await fetch(`${API_URL}/auth/verify-email`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token }),
+        });
+        return handleResponse(response);
+    },
+
+    register: async (userData: Partial<User>): Promise<User> => {
+         const payload = { ...userData };
+         // Ensure files are base64 encoded
+         if (payload.profilePhoto instanceof File) payload.profilePhoto = await fileToBase64(payload.profilePhoto) as any;
+         if (payload.governmentId instanceof File) payload.governmentId = await fileToBase64(payload.governmentId) as any;
+         if (payload.businessRegDoc instanceof File) payload.businessRegDoc = await fileToBase64(payload.businessRegDoc) as any;
+
+        const response = await fetch(`${API_URL}/auth/register`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        });
+        return handleResponse(response);
+    },
+    
+    getMe: async (): Promise<User> => {
+        const response = await fetchWithRetry(`${API_URL}/users/me`, {
+            method: 'GET',
+            headers: getHeaders(),
+        });
+        return handleResponse(response);
+    },
+
+    getAllCleaners: async (): Promise<Cleaner[]> => {
+        // No Content-Type header on GET requests (no body) — avoids CORS preflight
+        // which can fail on some mobile carriers / strict WebViews.
+        // Uses retry logic to handle Render cold-start timeouts.
+        const response = await fetchWithRetry(`${API_URL}/cleaners`, {
+            method: 'GET',
+        });
+        return handleResponse(response);
+    },
+
+    getAllJobs: async (): Promise<Job[]> => {
+        const response = await fetchWithRetry(`${API_URL}/jobs`, {
+            method: 'GET',
+            headers: getHeaders(),
+        });
+        return handleResponse(response);
+    },
+
+    postJob: async (jobData: Partial<Job>): Promise<Job> => {
+        const response = await fetch(`${API_URL}/jobs`, {
+            method: 'POST',
+            headers: getHeaders(),
+            body: JSON.stringify(jobData),
+        });
+        return handleResponse(response);
+    },
+
+    updateJob: async (jobId: string, updates: Partial<Job>): Promise<Job> => {
+        const response = await fetch(`${API_URL}/jobs/${jobId}`, {
+            method: 'PUT',
+            headers: getHeaders(),
+            body: JSON.stringify(updates),
+        });
+        return handleResponse(response);
+    },
+
+    cancelJob: async (jobId: string): Promise<Job> => {
+        const response = await fetch(`${API_URL}/jobs/${jobId}/cancel`, {
+            method: 'PUT',
+            headers: getHeaders(),
+        });
+        return handleResponse(response);
+    },
+
+    deleteJob: async (jobId: string): Promise<void> => {
+        const response = await fetch(`${API_URL}/jobs/${jobId}`, {
+            method: 'DELETE',
+            headers: getHeaders(),
+        });
+        return handleResponse(response);
+    },
+
+    getJobApplicants: async (jobId: string): Promise<User[]> => {
+        const response = await fetch(`${API_URL}/jobs/${jobId}/applicants`, {
+            method: 'GET',
+            headers: getHeaders(),
+        });
+        return handleResponse(response);
+    },
+
+    applyToJob: async (jobId: string): Promise<{ message: string; job: Job }> => {
+        const response = await fetch(`${API_URL}/jobs/${jobId}/apply`, {
+            method: 'POST',
+            headers: getHeaders(),
+        });
+        return handleResponse(response);
+    },
+
+    getCleanerById: async (id: string) => {
+        const response = await fetch(`${API_URL}/cleaners/${id}`, {
+            method: 'GET',
+            headers: { 'Content-Type': 'application/json' },
+        });
+        return handleResponse(response);
+    },
+
+    aiSearchCleaners: async (query: string): Promise<{ matchingIds: string[] }> => {
+        try {
+            const response = await fetch(`${API_URL}/search/ai`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ query }),
+            });
+            return handleResponse(response);
+        } catch (error) {
+            return { matchingIds: [] }; 
+        }
+    },
+    
+    createBooking: async (bookingData: any): Promise<Booking> => {
+        const response = await fetch(`${API_URL}/bookings`, {
+            method: 'POST',
+            headers: getHeaders(),
+            body: JSON.stringify(bookingData),
+        });
+        return handleResponse(response);
+    },
+
+    getBookings: async (role?: 'cleaner' | 'client'): Promise<Booking[]> => {
+        const url = role ? `${API_URL}/bookings?role=${role}` : `${API_URL}/bookings`;
+        const response = await fetch(url, {
+            method: 'GET',
+            headers: getHeaders(),
+        });
+        return handleResponse(response);
+    },
+
+    cancelBooking: async (bookingId: string): Promise<Booking> => {
+        const response = await fetch(`${API_URL}/bookings/${bookingId}/cancel`, {
+            method: 'POST',
+            headers: getHeaders(),
+        });
+        return handleResponse(response);
+    },
+
+    markJobComplete: async (bookingId: string): Promise<Booking> => {
+        const response = await fetch(`${API_URL}/bookings/${bookingId}/complete`, {
+            method: 'POST',
+            headers: getHeaders(),
+        });
+        return handleResponse(response);
+    },
+
+    submitReview: async (bookingId: string, reviewData: any) => {
+        const response = await fetch(`${API_URL}/bookings/${bookingId}/review`, {
+            method: 'POST',
+            headers: getHeaders(),
+            body: JSON.stringify(reviewData),
+        });
+        return handleResponse(response);
+    },
+    
+    updateUser: async (userData: Partial<User>) => {
+        const payload = { ...userData };
+        if (payload.profilePhoto instanceof File) {
+            payload.profilePhoto = await fileToBase64(payload.profilePhoto) as any;
+        }
+        const response = await fetch(`${API_URL}/users/me`, {
+            method: 'PUT',
+            headers: getHeaders(),
+            body: JSON.stringify(payload),
+        });
+        return handleResponse(response);
+    },
+
+    submitContactForm: async (formData: any) => {
+        const response = await fetch(`${API_URL}/contact`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(formData),
+        });
+        return handleResponse(response);
+    },
+    
+    adminUpdateUser: async (userId: string, userData: Partial<User>) => {
+        const payload = { ...userData };
+        // Don't send the File object; it should already be base64 if needed
+        const response = await fetch(`${API_URL}/admin/users/${userId}`, {
+            method: 'PUT',
+            headers: getHeaders(),
+            body: JSON.stringify(payload),
+        });
+        return handleResponse(response);
+    },
+
+    adminGetAllUsers: async (): Promise<User[]> => {
+        const response = await fetch(`${API_URL}/admin/users`, {
+            method: 'GET',
+            headers: getHeaders(),
+        });
+        return handleResponse(response);
+    },
+    
+    adminUpdateUserStatus: async (userId: string, isSuspended: boolean) => {
+        const response = await fetch(`${API_URL}/admin/users/${userId}/status`, {
+            method: 'PATCH',
+            headers: getHeaders(),
+            body: JSON.stringify({ isSuspended }),
+        });
+        return handleResponse(response);
+    },
+
+    adminDeleteUser: async (userId: string) => {
+        const response = await fetch(`${API_URL}/admin/users/${userId}`, {
+            method: 'DELETE',
+            headers: getHeaders(),
+        });
+        return handleResponse(response);
+    },
+
+    adminMarkAsPaid: async (bookingId: string) => {
+        const response = await fetch(`${API_URL}/admin/bookings/${bookingId}/mark-paid`, {
+            method: 'POST',
+            headers: getHeaders(),
+        });
+        return handleResponse(response);
+    },
+
+    adminCreateAdminUser: async (adminData: { email: string; fullName: string; role: AdminRole; password: string }) => {
+        const response = await fetch(`${API_URL}/admin/create-admin`, {
+            method: 'POST',
+            headers: getHeaders(),
+            body: JSON.stringify(adminData),
+        });
+        return handleResponse(response);
+    },
+
+    // ==========================================
+    // SUPPORT TICKET API
+    // ==========================================
+    createSupportTicket: async (ticketData: Partial<SupportTicket>): Promise<SupportTicket> => {
+        const response = await fetch(`${API_URL}/support`, {
+            method: 'POST',
+            headers: getHeaders(),
+            body: JSON.stringify(ticketData),
+        });
+        return handleResponse(response);
+    },
+
+    getUserTickets: async (): Promise<SupportTicket[]> => {
+        const response = await fetch(`${API_URL}/support/my`, {
+            method: 'GET',
+            headers: getHeaders(),
+        });
+        return handleResponse(response);
+    },
+
+    getAllSupportTickets: async (): Promise<SupportTicket[]> => {
+        const response = await fetch(`${API_URL}/admin/support`, {
+            method: 'GET',
+            headers: getHeaders(),
+        });
+        return handleResponse(response);
+    },
+
+    resolveSupportTicket: async (ticketId: string, adminResponse: string): Promise<SupportTicket> => {
+        const response = await fetch(`${API_URL}/admin/support/${ticketId}/resolve`, {
+            method: 'POST',
+            headers: getHeaders(),
+            body: JSON.stringify({ adminResponse }),
+        });
+        return handleResponse(response);
+    },
+
+    // ==========================================
+    // CHAT API
+    // ==========================================
+    
+    createChat: async (currentUserId: string, otherUserId: string, currentUserName: string, otherUserName: string): Promise<Chat> => {
+        const response = await fetch(`${API_URL}/chats`, {
+            method: 'POST',
+            headers: getHeaders(),
+            body: JSON.stringify({ participantId: otherUserId }),
+        });
+        return handleResponse(response);
+    },
+
+    getChats: async (userId: string): Promise<Chat[]> => {
+         const response = await fetch(`${API_URL}/chats`, {
+            method: 'GET',
+            headers: getHeaders(),
+        });
+        return handleResponse(response);
+    },
+
+    getChatMessages: async (chatId: string): Promise<Message[]> => {
+        const response = await fetch(`${API_URL}/chats/${chatId}/messages`, {
+            method: 'GET',
+            headers: getHeaders(),
+        });
+        return handleResponse(response);
+    },
+
+    sendMessage: async (chatId: string, senderId: string, text: string): Promise<Message> => {
+        const response = await fetch(`${API_URL}/chats/${chatId}/messages`, {
+            method: 'POST',
+            headers: getHeaders(),
+            body: JSON.stringify({ text }),
+        });
+        return handleResponse(response);
+    },
+
+    markChatAsRead: async (chatId: string): Promise<void> => {
+        const response = await fetch(`${API_URL}/chats/${chatId}/read`, {
+            method: 'PUT',
+            headers: getHeaders(),
+        });
+        return handleResponse(response);
+    },
+
+    // ==================== NOTIFICATION API ====================
+
+    getNotifications: async (): Promise<AppNotification[]> => {
+        const response = await fetch(`${API_URL}/notifications`, {
+            method: 'GET',
+            headers: getHeaders(),
+        });
+        return handleResponse(response);
+    },
+
+    markNotificationRead: async (notificationId: string): Promise<AppNotification> => {
+        const response = await fetch(`${API_URL}/notifications/${notificationId}/read`, {
+            method: 'PUT',
+            headers: getHeaders(),
+        });
+        return handleResponse(response);
+    },
+
+    markAllNotificationsRead: async (): Promise<void> => {
+        const response = await fetch(`${API_URL}/notifications/read-all`, {
+            method: 'PUT',
+            headers: getHeaders(),
+        });
+        return handleResponse(response);
+    },
+
+    adminSendNotification: async (data: { userId?: string; type?: string; title: string; message: string; sendToAll?: boolean }): Promise<void> => {
+        const response = await fetch(`${API_URL}/admin/notifications/send`, {
+            method: 'POST',
+            headers: getHeaders(),
+            body: JSON.stringify(data),
+        });
+        return handleResponse(response);
+    }
+};
