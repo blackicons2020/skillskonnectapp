@@ -3,6 +3,9 @@ node_modules/
 dist/
 build/
 .env
+**/.env
+**/.env.local
+**/.env.production
 *.local
 .DS_Store
 *.dex
@@ -10,14 +13,9 @@ build/
 *.ipa
 
 # Subproject ignores
-web/node_modules/
-web/dist/
-web/build/
-web/.env
-mobile/node_modules/
-mobile/dist/
-mobile/build/
-mobile/.env
+**/node_modules/
+**/dist/
+**/build/
 mobile/android/app/build/
 mobile/android/capacitor/build/
 mobile/ios/App/build/
