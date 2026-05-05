@@ -1,0 +1,419 @@
+
+import React, { useState, useEffect } from 'react';
+import { View } from '../types';
+import { apiService } from '../services/apiService';
+import { GoogleIcon, AppleIcon, EyeIcon, EyeSlashIcon } from './icons';
+
+interface AuthProps {
+    initialTab: 'login' | 'signup';
+    onNavigate: (v: View) => void;
+    onLoginAttempt: (email: string, password?: string, rememberMe?: boolean) => Promise<void>;
+    onSignup: (email: string, password: string, userType: 'client' | 'worker') => Promise<void>;
+    authMessage: { type: 'success' | 'error', text: string } | null;
+    onAuthMessageDismiss: () => void;
+}
+
+interface LoginTabProps {
+    email: string;
+    setEmail: (email: string) => void;
+    password: string;
+    setPassword: (password: string) => void;
+    rememberMe: boolean;
+    setRememberMe: (v: boolean) => void;
+    handleLogin: () => Promise<void>;
+    onSocialClick: (provider: 'google' | 'apple') => void;
+    onForgotPasswordClick: () => void;
+}
+
+const LoginTab: React.FC<LoginTabProps> = ({ email, setEmail, password, setPassword, rememberMe, setRememberMe, handleLogin, onSocialClick, onForgotPasswordClick }) => {
+    const [showPassword, setShowPassword] = useState(false);
+    const [isLoading, setIsLoading] = useState(false);
+
+    const onSubmit = async () => {
+        setIsLoading(true);
+        try {
+            await handleLogin();
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    return (
+        <div>
+            <form onSubmit={(e) => { e.preventDefault(); onSubmit(); }}>
+                <div className="space-y-4">
+                    <div>
+                        <label htmlFor="email" className="block text-sm font-medium text-gray-700">Email address</label>
+                        <input
+                            type="email"
+                            id="email"
+                            autoComplete="email"
+                            required
+                            className="mt-1 block w-full px-3 py-2 border border-gray-600 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-primary focus:border-primary sm:text-sm bg-dark text-light"
+                            placeholder="you@example.com"
+                            value={email}
+                            onChange={(e) => setEmail(e.target.value)}
+                        />
+                    </div>
+                    <div>
+                        <label htmlFor="password" className="block text-sm font-medium text-gray-700">Password</label>
+                        <div className="relative mt-1">
+                            <input
+                                type={showPassword ? 'text' : 'password'}
+                                id="password"
+                                autoComplete="current-password"
+                                required
+                                minLength={6}
+                                title="Password must be at least 6 characters long."
+                                className="block w-full px-3 py-2 border border-gray-600 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-primary focus:border-primary sm:text-sm bg-dark text-light"
+                                placeholder="••••••••"
+                                value={password}
+                                onChange={(e) => setPassword(e.target.value)}
+                            />
+                            <div className="absolute inset-y-0 right-0 pr-3 flex items-center">
+                                <button
+                                    type="button"
+                                    onClick={() => setShowPassword(!showPassword)}
+                                    className="text-gray-400 hover:text-gray-200 focus:outline-none"
+                                    aria-label={showPassword ? "Hide password" : "Show password"}
+                                >
+                                    {showPassword ? <EyeSlashIcon className="h-5 w-5" /> : <EyeIcon className="h-5 w-5" />}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center">
+                            <input
+                                id="remember-me"
+                                name="remember-me"
+                                type="checkbox"
+                                className="h-4 w-4 text-primary focus:ring-secondary border-gray-300 rounded"
+                                checked={rememberMe}
+                                onChange={(e) => setRememberMe(e.target.checked)}
+                            />
+                            <label htmlFor="remember-me" className="ml-2 block text-sm text-gray-900">Remember me</label>
+                        </div>
+                        {/* Forgot password — hidden until email/SMTP is configured
+                        <div className="text-sm">
+                            <button type="button" onClick={onForgotPasswordClick} className="font-medium text-primary hover:text-secondary">Forgot your password?</button>
+                        </div>
+                        */}
+                    </div>
+                    <div>
+                        <button type="submit" disabled={isLoading} className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary hover:bg-secondary focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed">
+                            {isLoading ? (
+                                <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                                </svg>
+                            ) : 'Sign in'}
+                        </button>
+                    </div>
+                </div>
+            </form>
+            {/* Google and Apple sign-in - commented out for now, uncomment when ready
+            <div className="mt-6">
+                <div className="relative">
+                    <div className="absolute inset-0 flex items-center">
+                        <div className="w-full border-t border-gray-300"></div>
+                    </div>
+                    <div className="relative flex justify-center text-sm">
+                        <span className="px-2 bg-white text-gray-500">Or continue with</span>
+                    </div>
+                </div>
+                <div className="mt-6 grid grid-cols-2 gap-3">
+                    <button disabled className="w-full inline-flex justify-center py-2 px-4 border border-gray-300 rounded-md shadow-sm bg-white text-sm font-medium text-gray-400 cursor-not-allowed">
+                        <span className="sr-only">Sign in with Google</span><GoogleIcon />
+                    </button>
+                    <button disabled className="w-full inline-flex justify-center py-2 px-4 border border-gray-300 rounded-md shadow-sm bg-white text-sm font-medium text-gray-400 cursor-not-allowed">
+                        <span className="sr-only">Sign in with Apple</span><AppleIcon />
+                    </button>
+                </div>
+            </div>
+            */}
+        </div>
+    );
+};
+interface SignupTabProps {
+    onSignup: (email: string, password: string, userType: 'client' | 'worker') => Promise<void>;
+}
+
+const SignupTab: React.FC<SignupTabProps> = ({ onSignup }) => {
+    const [email, setEmail] = useState('');
+    const [password, setPassword] = useState('');
+    const [confirmPassword, setConfirmPassword] = useState('');
+    const [userType, setUserType] = useState<'client' | 'worker' | ''>('');
+    const [showPassword, setShowPassword] = useState(false);
+    const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+    const [isLoading, setIsLoading] = useState(false);
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!userType) {
+            alert('Please select whether you are a Client or a Professional.');
+            return;
+        }
+        if (password !== confirmPassword) {
+            alert('Passwords do not match.');
+            return;
+        }
+        setIsLoading(true);
+        try {
+            await onSignup(email.trim(), password, userType);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    return (
+        <div>
+            <form onSubmit={handleSubmit}>
+                <div className="space-y-4">
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">I want to join as</label>
+                        <div className="grid grid-cols-2 gap-3">
+                            <button
+                                type="button"
+                                onClick={() => setUserType('client')}
+                                className={`py-3 px-4 rounded-lg border-2 text-center font-semibold transition-all ${
+                                    userType === 'client'
+                                        ? 'border-primary bg-primary/10 text-primary'
+                                        : 'border-gray-300 text-gray-600 hover:border-gray-400'
+                                }`}
+                            >
+                                <span className="block text-lg">👤</span>
+                                <span className="text-sm">Client</span>
+                                <span className="block text-xs text-gray-500 mt-0.5">I need services</span>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setUserType('worker')}
+                                className={`py-3 px-4 rounded-lg border-2 text-center font-semibold transition-all ${
+                                    userType === 'worker'
+                                        ? 'border-primary bg-primary/10 text-primary'
+                                        : 'border-gray-300 text-gray-600 hover:border-gray-400'
+                                }`}
+                            >
+                                <span className="block text-lg">🛠️</span>
+                                <span className="text-sm">Professional</span>
+                                <span className="block text-xs text-gray-500 mt-0.5">I offer services</span>
+                            </button>
+                        </div>
+                    </div>
+                    <div>
+                        <label htmlFor="signup-email" className="block text-sm font-medium text-gray-700">Email address</label>
+                        <input type="email" id="signup-email" value={email} onChange={(e) => setEmail(e.target.value)} required className="mt-1 block w-full px-3 py-2 border border-gray-600 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-primary focus:border-primary sm:text-sm bg-dark text-light" placeholder="you@example.com" />
+                    </div>
+                    <div>
+                        <label htmlFor="signup-password" className="block text-sm font-medium text-gray-700">Password</label>
+                        <div className="relative mt-1">
+                            <input
+                                type={showPassword ? 'text' : 'password'}
+                                id="signup-password"
+                                value={password}
+                                onChange={(e) => setPassword(e.target.value)}
+                                required
+                                minLength={6}
+                                title="Password must be at least 6 characters long."
+                                className="block w-full px-3 py-2 border border-gray-600 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-primary focus:border-primary sm:text-sm bg-dark text-light"
+                                placeholder="••••••••"
+                            />
+                            <div className="absolute inset-y-0 right-0 pr-3 flex items-center">
+                                <button type="button" onClick={() => setShowPassword(!showPassword)} className="text-gray-400 hover:text-gray-200 focus:outline-none" aria-label={showPassword ? 'Hide password' : 'Show password'}>
+                                    {showPassword ? <EyeSlashIcon className="h-5 w-5" /> : <EyeIcon className="h-5 w-5" />}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <div>
+                        <label htmlFor="signup-confirm-password" className="block text-sm font-medium text-gray-700">Confirm Password</label>
+                        <div className="relative mt-1">
+                            <input
+                                type={showConfirmPassword ? 'text' : 'password'}
+                                id="signup-confirm-password"
+                                value={confirmPassword}
+                                onChange={(e) => setConfirmPassword(e.target.value)}
+                                required
+                                minLength={6}
+                                className="block w-full px-3 py-2 border border-gray-600 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-primary focus:border-primary sm:text-sm bg-dark text-light"
+                                placeholder="••••••••"
+                            />
+                            <div className="absolute inset-y-0 right-0 pr-3 flex items-center">
+                                <button type="button" onClick={() => setShowConfirmPassword(!showConfirmPassword)} className="text-gray-400 hover:text-gray-200 focus:outline-none" aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}>
+                                    {showConfirmPassword ? <EyeSlashIcon className="h-5 w-5" /> : <EyeIcon className="h-5 w-5" />}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <div>
+                        <button type="submit" disabled={isLoading} className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary hover:bg-secondary focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary disabled:bg-gray-400 disabled:cursor-not-allowed">
+                            {isLoading ? 'Creating account…' : 'Create Account'}
+                        </button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    );
+};
+
+const ForgotPasswordTab: React.FC<{ onBack: () => void }> = ({ onBack }) => {
+    const [email, setEmail] = useState('');
+    const [submitted, setSubmitted] = useState(false);
+    const [isLoading, setIsLoading] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setError(null);
+        setIsLoading(true);
+        try {
+            await apiService.forgotPassword(email.trim());
+            setSubmitted(true);
+        } catch (err: any) {
+            setError(err.message || 'Something went wrong. Please try again.');
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    if (submitted) {
+        return (
+            <div className="text-center">
+                <h3 className="text-xl font-semibold text-dark">Check Your Email</h3>
+                <p className="mt-2 text-gray-600">
+                    If an account with that email exists, we've sent instructions on how to reset your password.
+                </p>
+                <button
+                    onClick={onBack}
+                    className="mt-6 font-medium text-primary hover:text-secondary"
+                >
+                    &larr; Back to Login
+                </button>
+            </div>
+        );
+    }
+
+    return (
+        <div>
+            <h3 className="text-xl font-semibold text-dark text-center mb-2">Forgot Your Password?</h3>
+            <p className="text-sm text-gray-600 text-center mb-6">No worries! Enter your email and we'll send you a reset link.</p>
+            <form onSubmit={handleSubmit} className="space-y-4">
+                <div>
+                    <label htmlFor="reset-email" className="block text-sm font-medium text-gray-700">Email address</label>
+                    <input
+                        type="email"
+                        id="reset-email"
+                        autoComplete="email"
+                        required
+                        className="mt-1 block w-full px-3 py-2 border border-gray-600 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-primary focus:border-primary sm:text-sm bg-dark text-light"
+                        placeholder="you@example.com"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                    />
+                </div>
+                {error && <p className="text-sm text-red-600">{error}</p>}
+                <div>
+                    <button
+                        type="submit"
+                        disabled={isLoading}
+                        className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary hover:bg-secondary focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary disabled:opacity-60 disabled:cursor-not-allowed"
+                    >
+                        {isLoading ? 'Sending…' : 'Send Reset Link'}
+                    </button>
+                </div>
+            </form>
+            <div className="text-center mt-6">
+                <button onClick={onBack} className="font-medium text-primary hover:text-secondary">
+                    &larr; Back to Login
+                </button>
+            </div>
+        </div>
+    );
+};
+
+export const Auth: React.FC<AuthProps> = ({ initialTab, onNavigate, onLoginAttempt, onSignup, authMessage, onAuthMessageDismiss }) => {
+    const [activeTab, setActiveTab] = useState<'login' | 'signup'>(initialTab);
+    const [loginView, setLoginView] = useState<'form' | 'forgotPassword'>('form');
+    const [email, setEmail] = useState('');
+    const [password, setPassword] = useState('');
+    const [rememberMe, setRememberMe] = useState(false);
+
+    useEffect(() => {
+        setActiveTab(initialTab);
+    }, [initialTab]);
+
+    useEffect(() => {
+        if (authMessage) {
+            const timer = setTimeout(() => {
+                onAuthMessageDismiss();
+            }, 5000);
+            return () => clearTimeout(timer);
+        }
+    }, [authMessage, onAuthMessageDismiss]);
+
+    const handleLogin = async () => {
+        await onLoginAttempt(email.trim(), password.trim(), rememberMe);
+    };
+
+    const handleTabChange = (tab: 'login' | 'signup') => {
+        setActiveTab(tab);
+        setLoginView('form');
+    };
+
+    return (
+        <>
+            <div className="min-h-full flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8 flex-col">
+                <div className="max-w-md w-full space-y-4">
+                    {authMessage && (
+                        <div
+                            className={`p-4 rounded-md shadow ${authMessage.type === 'success' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}
+                            role="alert"
+                        >
+                            <p className="font-bold">{authMessage.type === 'success' ? 'Success' : 'Error'}</p>
+                            <p className="text-sm">{authMessage.text}</p>
+                        </div>
+                    )}
+                    <div className="bg-white p-8 sm:p-10 rounded-xl shadow-lg">
+                        <div>
+                            <h2 className="text-center text-3xl font-extrabold text-dark">
+                                {activeTab === 'login' && loginView === 'form' ? 'Sign in to your account' :
+                                    activeTab === 'login' && loginView === 'forgotPassword' ? 'Reset your password' :
+                                        'Create an account'}
+                            </h2>
+                            {loginView === 'form' && (
+                                <p className="mt-2 text-center text-sm text-gray-600">
+                                    {activeTab === 'login' ? 'New to Skills Konnect?' : 'Already have an account?'}
+                                    {' '}
+                                    <button onClick={() => handleTabChange(activeTab === 'login' ? 'signup' : 'login')} className="font-medium text-primary hover:text-secondary">
+                                        {activeTab === 'login' ? 'Create an account' : 'Sign in'}
+                                    </button>
+                                </p>
+                            )}
+                        </div>
+
+                        {loginView === 'form' ? (
+                            activeTab === 'login' ? (
+                                <LoginTab
+                                    email={email}
+                                    setEmail={setEmail}
+                                    password={password}
+                                    setPassword={setPassword}
+                                    rememberMe={rememberMe}
+                                    setRememberMe={setRememberMe}
+                                    handleLogin={handleLogin}
+                                    onSocialClick={() => { }} // No-op
+                                    onForgotPasswordClick={() => setLoginView('forgotPassword')}
+                                />
+                            ) : (
+                                <SignupTab onSignup={onSignup} />
+                            )
+                        ) : (
+                            <ForgotPasswordTab onBack={() => setLoginView('form')} />
+                        )}
+                    </div>
+                </div>
+            </div>
+        </>
+    );
+};

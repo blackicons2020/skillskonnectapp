@@ -1,0 +1,9 @@
+# Don't ignore api anymore as we are deploying it to Vercel now
+node_modules
+dist
+.env
+.env.*
+!.env.example
+android
+ios
+capacitor.config.ts

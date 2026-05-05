@@ -1,0 +1,23 @@
+# Monorepo ignore
+node_modules/
+dist/
+build/
+.env
+*.local
+.DS_Store
+*.dex
+*.apk
+*.ipa
+
+# Subproject ignores
+web/node_modules/
+web/dist/
+web/build/
+web/.env
+mobile/node_modules/
+mobile/dist/
+mobile/build/
+mobile/.env
+mobile/android/app/build/
+mobile/android/capacitor/build/
+mobile/ios/App/build/
