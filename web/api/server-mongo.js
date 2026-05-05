@@ -1864,8 +1864,24 @@ app.get('/api/bookings', authenticateToken, async (req, res) => {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    // Fetch bookings from Bookings collection where user is client
-    const bookings = await Booking.find({ clientId: user._id.toString() }).sort({ createdAt: -1 });
+    const { role } = req.query;
+    let query = {};
+    
+    if (role === 'client') {
+      query = { clientId: user._id.toString() };
+    } else if (role === 'cleaner') {
+      query = { cleanerId: user._id.toString() };
+    } else {
+      // Default: find bookings where user is either client OR cleaner
+      query = {
+        $or: [
+          { clientId: user._id.toString() },
+          { cleanerId: user._id.toString() }
+        ]
+      };
+    }
+
+    const bookings = await Booking.find(query).sort({ createdAt: -1 });
     
     // Return bookings with id field mapped
     const normalizedBookings = bookings.map(b => b.toJSON());

@@ -49,15 +49,40 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onUpdateUser, onNavi
         () => new Set(user.appliedJobs || [])
     );
 
-    // Check if profile is incomplete
-    const isProfileIncomplete = !user.userType || !user.phoneNumber || !user.country;
-    console.log('[Dashboard] user.userType:', JSON.stringify(user.userType), '| user.phoneNumber:', JSON.stringify(user.phoneNumber), '| user.country:', JSON.stringify(user.country), '| isProfileIncomplete:', isProfileIncomplete, '| initialTab:', initialTab);
+    // Check if profile is incomplete - needs basic info + role-specific details
+    const isProfileIncomplete = useMemo(() => {
+        if (!user) return true;
+        
+        // Basic info required for everyone
+        const hasBasicInfo = user.userType && 
+                            user.phoneNumber && user.phoneNumber.trim() !== '' && 
+                            user.country && user.country.trim() !== '';
+        
+        if (!hasBasicInfo) return true;
+        
+        // Role-specific info
+        if (user.role === 'cleaner' || (user as any).userType === 'worker' || (user as any).userType?.includes('Worker')) {
+            const hasWorkerInfo = (user.services && user.services.length > 0) || 
+                                 (user.skillType && user.skillType.length > 0);
+            return !hasWorkerInfo;
+        }
+        
+        return false;
+    }, [user]);
 
     // Default to 'jobs' (My Jobs & Payments) if profile is complete, otherwise 'profile'
     const [activeTab, setActiveTab] = useState<'profile' | 'jobs' | 'reviews' | 'messages' | 'support' | 'verification' | 'listings' | 'notifications'>(
         isProfileIncomplete ? 'profile' : (initialTab || 'jobs')
     );
     const [showProfileCompletion, setShowProfileCompletion] = useState(isProfileIncomplete);
+
+    // Sync state if isProfileIncomplete changes (e.g. after background refetch)
+    useEffect(() => {
+        if (isProfileIncomplete) {
+            setActiveTab('profile');
+            setShowProfileCompletion(true);
+        }
+    }, [isProfileIncomplete]);
 
     // PWA install prompt - removed (handled in Footer)
     const [chatToOpen, setChatToOpen] = useState<string | null>(null);

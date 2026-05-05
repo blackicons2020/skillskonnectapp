@@ -142,13 +142,27 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({ user, allClean
     const [showUpgradeBanner, setShowUpgradeBanner] = useState(true);
 
     // Check if profile is incomplete
-    const isProfileIncomplete = !user.userType || !user.phoneNumber || !user.country;
+    const isProfileIncomplete = useMemo(() => {
+        if (!user) return true;
+        const hasBasicInfo = user.userType && 
+                            user.phoneNumber && user.phoneNumber.trim() !== '' && 
+                            user.country && user.country.trim() !== '';
+        return !hasBasicInfo;
+    }, [user]);
     
     // Set initial tab - if profile is incomplete, always start with profile, otherwise use initialTab or 'find'
     const [activeTab, setActiveTab] = useState<'find' | 'bookings' | 'messages' | 'support' | 'profile' | 'verification' | 'jobs' | 'notifications'>(
         isProfileIncomplete ? 'profile' : (initialTab || 'find')
     );
     const [showProfileCompletion, setShowProfileCompletion] = useState(isProfileIncomplete);
+
+    // Sync state if isProfileIncomplete changes
+    useEffect(() => {
+        if (isProfileIncomplete) {
+            setActiveTab('profile');
+            setShowProfileCompletion(true);
+        }
+    }, [isProfileIncomplete]);
     
     // Handler for profile updates
     const handleProfileUpdate = async (updates: Partial<User>) => {
