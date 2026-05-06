@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { User, View, VerificationDocuments, Job } from 'types';
 import { PencilIcon, StarIcon, BriefcaseIcon, ChatBubbleLeftRightIcon, LifebuoyIcon, UserIcon } from './icons';
 import { SearchableSkillSelector } from './SearchableSkillSelector';

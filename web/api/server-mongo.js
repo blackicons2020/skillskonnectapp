@@ -19,7 +19,7 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) {
-    throw new Error('FATAL: JWT_SECRET environment variable is not set');
+  throw new Error('FATAL: JWT_SECRET environment variable is not set');
 }
 const MONGO_URL = process.env.MONGO_URL;
 
@@ -54,7 +54,7 @@ const UserSchema = new mongoose.Schema({
   workplaceAddress: String,
   profilePhoto: String,
   profilePicture: String,
-  
+
   // Company fields
   companyName: String,
   companyRegistrationNumber: String,
@@ -66,7 +66,7 @@ const UserSchema = new mongoose.Schema({
   businessEmail: String,
   businessPhone: String,
   businessAddress: String,
-  
+
   // Worker fields
   services: [String],
   skillType: [String],
@@ -80,12 +80,12 @@ const UserSchema = new mongoose.Schema({
   chargePerContractNegotiable: Boolean,
   chargeRate: Number,
   chargeRateType: String,
-  
+
   // Bank details
   bankName: String,
   accountNumber: String,
   accountName: String,
-  
+
   // Verification
   isVerified: { type: Boolean, default: false },
   verificationDocuments: {
@@ -93,32 +93,32 @@ const UserSchema = new mongoose.Schema({
     companyRegistrationCert: String,
     skillTrainingCert: String
   },
-  
+
   // Admin
   isAdmin: { type: Boolean, default: false },
   adminRole: String,
   isSuspended: { type: Boolean, default: false },
-  
+
   // Subscription
   subscriptionTier: String,
   pendingSubscription: String,
   subscriptionEndDate: Date,
   subscriptionDate: Date,
   subscriptionAmount: Number,
-  
+
   // Bookings & Jobs
   bookingHistory: [mongoose.Schema.Types.Mixed],
   postedJobs: [mongoose.Schema.Types.Mixed],
   appliedJobs: [String],
-  
+
   // Reviews
   reviewsData: [mongoose.Schema.Types.Mixed],
-  
+
   // Usage tracking
   monthlyNewClientsIds: [String],
   monthlyUsageResetDate: String,
   monthlyJobPostsCount: Number,
-  
+
   // Legacy nested fields
   pricing: {
     hourly: Number,
@@ -326,12 +326,12 @@ async function createNotification(userId, type, title, message) {
 mongoose.connect(MONGO_URL)
   .then(async () => {
     console.log('✅ Connected to MongoDB');
-    
+
     // Create super admin if doesn't exist
     try {
       const adminEmail = 'superadmin@skillskonnect.online';
       const existingAdmin = await User.findOne({ email: adminEmail });
-      
+
       if (!existingAdmin) {
         const hashedPassword = await bcrypt.hash(process.env.SUPERADMIN_PASSWORD || 'ChangeMeImmediately!', 10);
         await User.create({
@@ -459,7 +459,7 @@ app.post('/api/auth/signup', async (req, res) => {
     });
 
     const token = jwt.sign(
-      { email: newUser.email, userType: newUser.userType, role: newUser.role, isAdmin: false },
+      { id: newUser._id.toString(), email: newUser.email, userType: newUser.userType, role: newUser.role, isAdmin: false },
       JWT_SECRET,
       { expiresIn: '7d' }
     );
@@ -676,8 +676,8 @@ app.put('/api/users/me', authenticateToken, async (req, res) => {
     if (user && updateData.fullName && updateData.phoneNumber && updateData.country) {
       if (user.userType === 'worker') {
         // Worker needs: services, experience/pricing
-        if (updateData.services && updateData.services.length > 0 && 
-           (updateData.chargeHourly || updateData.chargeDaily || updateData.chargePerContract)) {
+        if (updateData.services && updateData.services.length > 0 &&
+          (updateData.chargeHourly || updateData.chargeDaily || updateData.chargePerContract)) {
           updateData.isProfileComplete = true;
         }
       } else if (user.userType === 'client') {
@@ -753,7 +753,7 @@ app.post('/api/users/:userId/review', authenticateToken, async (req, res) => {
 
     worker.ratings.reviews.push(review);
     worker.ratings.count = worker.ratings.reviews.length;
-    worker.ratings.average = 
+    worker.ratings.average =
       worker.ratings.reviews.reduce((sum, r) => sum + r.rating, 0) / worker.ratings.count;
 
     await worker.save();
@@ -772,7 +772,7 @@ app.post('/api/users/:userId/review', authenticateToken, async (req, res) => {
 app.post('/api/jobs', authenticateToken, async (req, res) => {
   try {
     const client = await User.findOne({ email: req.user.email });
-    
+
     const jobData = {
       title: req.body.title,
       description: req.body.description,
@@ -796,13 +796,13 @@ app.post('/api/jobs', authenticateToken, async (req, res) => {
     };
 
     const newJob = await Job.create(jobData);
-    
+
     // Also add to user's postedJobs array
     await User.findByIdAndUpdate(client._id, {
       $push: { postedJobs: newJob.toJSON() },
       $inc: { monthlyJobPostsCount: 1 }
     });
-    
+
     res.status(201).json(newJob);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -1399,7 +1399,7 @@ app.get('/api/search/workers', authenticateToken, async (req, res) => {
 app.post('/api/users/subscription/upgrade', authenticateToken, async (req, res) => {
   try {
     const { plan } = req.body;
-    
+
     if (!plan) {
       return res.status(400).json({ error: 'Plan name is required' });
     }
@@ -1432,7 +1432,7 @@ app.post('/api/users/subscription/upgrade', authenticateToken, async (req, res) 
 app.post('/api/users/subscription/receipt', authenticateToken, async (req, res) => {
   try {
     const { name, dataUrl } = req.body;
-    
+
     if (!name || !dataUrl) {
       return res.status(400).json({ error: 'Receipt name and dataUrl are required' });
     }
@@ -1577,7 +1577,7 @@ app.post('/api/admin/users/:userId/approve-subscription', authenticateToken, asy
       `Your ${approvedPlan} subscription has been approved and is now active. Enjoy your premium features!`
     );
 
-    res.json({ 
+    res.json({
       message: 'Subscription approved successfully',
       user: normalizeUser(user.toObject())
     });
@@ -1614,7 +1614,7 @@ app.post('/api/auth/register', async (req, res) => {
     });
 
     const token = jwt.sign(
-      { email: newUser.email, userType: newUser.userType, role: newUser.role, isAdmin: false },
+      { id: newUser._id.toString(), email: newUser.email, userType: newUser.userType, role: newUser.role, isAdmin: false },
       JWT_SECRET,
       { expiresIn: '7d' }
     );
@@ -1676,7 +1676,7 @@ app.post('/api/admin/notifications/send', authenticateToken, async (req, res) =>
     if (!admin || !admin.isAdmin) return res.status(403).json({ error: 'Unauthorized' });
 
     const { userId, type, title, message, sendToAll } = req.body;
-    
+
     if (sendToAll) {
       const users = await User.find({}).select('_id');
       const notifications = users.map(u => ({
@@ -1707,7 +1707,7 @@ app.get('/api/cleaners', async (req, res) => {
       role: 'cleaner',
       isSuspended: { $ne: true }
     }).select('-password');
-    
+
     // Map to Cleaner interface expected by frontend
     const cleaners = workers.map(w => {
       const worker = w.toObject();
@@ -1737,7 +1737,7 @@ app.get('/api/cleaners', async (req, res) => {
         reviewsData: worker.reviewsData || worker.ratings?.reviews || [],
       };
     });
-    
+
     res.json(cleaners);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -1866,7 +1866,7 @@ app.get('/api/bookings', authenticateToken, async (req, res) => {
 
     const { role } = req.query;
     let query = {};
-    
+
     if (role === 'client') {
       query = { clientId: user._id.toString() };
     } else if (role === 'cleaner') {
@@ -1882,10 +1882,10 @@ app.get('/api/bookings', authenticateToken, async (req, res) => {
     }
 
     const bookings = await Booking.find(query).sort({ createdAt: -1 });
-    
+
     // Return bookings with id field mapped
     const normalizedBookings = bookings.map(b => b.toJSON());
-    
+
     res.json(normalizedBookings);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -1900,7 +1900,7 @@ app.post('/api/bookings', authenticateToken, async (req, res) => {
     }
 
     const { cleanerId, service, date, amount, totalAmount, paymentMethod } = req.body;
-    
+
     // Get cleaner info
     const cleaner = await User.findById(cleanerId);
     if (!cleaner) {
@@ -1965,9 +1965,9 @@ app.post('/api/bookings/:bookingId/cancel', authenticateToken, async (req, res) 
     // Update user's bookingHistory
     await User.findByIdAndUpdate(user._id, {
       $set: {
-        bookingHistory: user.bookingHistory?.map(b => 
-          (b.id === req.params.bookingId || b._id?.toString() === req.params.bookingId) 
-            ? { ...b, status: 'Cancelled' } 
+        bookingHistory: user.bookingHistory?.map(b =>
+          (b.id === req.params.bookingId || b._id?.toString() === req.params.bookingId)
+            ? { ...b, status: 'Cancelled' }
             : b
         )
       }
@@ -1995,26 +1995,26 @@ app.post('/api/bookings/:bookingId/complete', authenticateToken, async (req, res
     // Update booking status
     booking.status = 'Completed';
     booking.jobApprovedByClient = true;
-    
+
     // If payment method is Direct, mark payment as paid
     if (booking.paymentMethod === 'Direct') {
       booking.paymentStatus = 'Paid';
     }
-    
+
     await booking.save();
 
     // Update user's bookingHistory
     const updatedBooking = booking.toJSON();
     await User.findByIdAndUpdate(user._id, {
       $set: {
-        bookingHistory: user.bookingHistory?.map(b => 
-          (b.id === req.params.bookingId || b._id?.toString() === req.params.bookingId) 
-            ? { 
-                ...b, 
-                status: 'Completed', 
-                jobApprovedByClient: true,
-                paymentStatus: booking.paymentMethod === 'Direct' ? 'Paid' : b.paymentStatus
-              } 
+        bookingHistory: user.bookingHistory?.map(b =>
+          (b.id === req.params.bookingId || b._id?.toString() === req.params.bookingId)
+            ? {
+              ...b,
+              status: 'Completed',
+              jobApprovedByClient: true,
+              paymentStatus: booking.paymentMethod === 'Direct' ? 'Paid' : b.paymentStatus
+            }
             : b
         )
       }
@@ -2061,7 +2061,7 @@ app.post('/api/bookings/:bookingId/review', authenticateToken, async (req, res) 
     }
     worker.ratings.reviews.push(review);
     worker.ratings.count = worker.ratings.reviews.length;
-    worker.ratings.average = 
+    worker.ratings.average =
       worker.ratings.reviews.reduce((sum, r) => sum + r.rating, 0) / worker.ratings.count;
 
     await worker.save();
@@ -2073,9 +2073,9 @@ app.post('/api/bookings/:bookingId/review', authenticateToken, async (req, res) 
     // Update user's bookingHistory
     await User.findByIdAndUpdate(user._id, {
       $set: {
-        bookingHistory: user.bookingHistory?.map(b => 
-          (b.id === req.params.bookingId || b._id?.toString() === req.params.bookingId) 
-            ? { ...b, reviewSubmitted: true } 
+        bookingHistory: user.bookingHistory?.map(b =>
+          (b.id === req.params.bookingId || b._id?.toString() === req.params.bookingId)
+            ? { ...b, reviewSubmitted: true }
             : b
         )
       }
