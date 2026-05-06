@@ -144,9 +144,14 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({ user, allClean
     // Check if profile is incomplete
     const isProfileIncomplete = useMemo(() => {
         if (!user) return true;
-        const hasBasicInfo = user.userType && 
+        
+        // If backend explicitly says it's incomplete
+        if (user.isProfileComplete === false) return true;
+
+        const hasBasicInfo = (user.userType || user.role) && 
                             user.phoneNumber && user.phoneNumber.trim() !== '' && 
                             user.country && user.country.trim() !== '';
+        
         return !hasBasicInfo;
     }, [user]);
     

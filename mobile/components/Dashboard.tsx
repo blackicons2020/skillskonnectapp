@@ -49,9 +49,35 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onUpdateUser, onNavi
         () => new Set(user.appliedJobs || [])
     );
 
-    // Check if profile is incomplete
-    const isProfileIncomplete = !user.userType || !user.phoneNumber || !user.country;
-    console.log('[Dashboard] user.userType:', JSON.stringify(user.userType), '| user.phoneNumber:', JSON.stringify(user.phoneNumber), '| user.country:', JSON.stringify(user.country), '| isProfileIncomplete:', isProfileIncomplete, '| initialTab:', initialTab);
+    // Check if profile is incomplete - needs basic info + role-specific details
+    const isProfileIncomplete = useMemo(() => {
+        if (!user) return true;
+        
+        // If backend explicitly says it's incomplete
+        if (user.isProfileComplete === false) return true;
+
+        // Basic info required for everyone
+        const hasBasicInfo = (user.userType || user.role) && 
+                            user.phoneNumber && user.phoneNumber.trim() !== '' && 
+                            user.country && user.country.trim() !== '';
+        
+        if (!hasBasicInfo) return true;
+        
+        // Role-specific info for workers/professionals
+        const isWorker = user.role === 'cleaner' || 
+                         user.userType === 'worker' || 
+                         user.userType?.toLowerCase().includes('worker') ||
+                         user.userType?.toLowerCase().includes('cleaner') ||
+                         user.userType?.toLowerCase().includes('professional');
+
+        if (isWorker) {
+            const hasWorkerInfo = (user.services && user.services.length > 0) || 
+                                 (user.skillType && user.skillType.length > 0);
+            return !hasWorkerInfo;
+        }
+        
+        return false;
+    }, [user]);
 
     // Default to 'jobs' (My Jobs & Payments) if profile is complete, otherwise 'profile'
     const [activeTab, setActiveTab] = useState<'profile' | 'jobs' | 'reviews' | 'messages' | 'support' | 'verification' | 'listings' | 'notifications'>(

@@ -450,7 +450,13 @@ const App: React.FC = () => {
                 }
             } else if (userData.isAdmin || (userData as any).role === 'admin' || (userData as any).adminRole) {
                 handleNavigate('adminDashboard');
-            } else if ((userData as any).userType === 'worker' || userData.role === 'cleaner') {
+            } else if (
+                (userData as any).userType === 'worker' || 
+                userData.role === 'cleaner' || 
+                userData.userType?.toLowerCase().includes('worker') ||
+                userData.userType?.toLowerCase().includes('cleaner') ||
+                userData.userType?.toLowerCase().includes('professional')
+            ) {
                 handleNavigate('cleanerDashboard');
             } else {
                 handleNavigate('clientDashboard');

@@ -53,15 +53,24 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onUpdateUser, onNavi
     const isProfileIncomplete = useMemo(() => {
         if (!user) return true;
         
+        // If backend explicitly says it's incomplete
+        if (user.isProfileComplete === false) return true;
+
         // Basic info required for everyone
-        const hasBasicInfo = user.userType && 
+        const hasBasicInfo = (user.userType || user.role) && 
                             user.phoneNumber && user.phoneNumber.trim() !== '' && 
                             user.country && user.country.trim() !== '';
         
         if (!hasBasicInfo) return true;
         
-        // Role-specific info
-        if (user.role === 'cleaner' || (user as any).userType === 'worker' || (user as any).userType?.includes('Worker')) {
+        // Role-specific info for workers/professionals
+        const isWorker = user.role === 'cleaner' || 
+                         user.userType === 'worker' || 
+                         user.userType?.toLowerCase().includes('worker') ||
+                         user.userType?.toLowerCase().includes('cleaner') ||
+                         user.userType?.toLowerCase().includes('professional');
+
+        if (isWorker) {
             const hasWorkerInfo = (user.services && user.services.length > 0) || 
                                  (user.skillType && user.skillType.length > 0);
             return !hasWorkerInfo;
