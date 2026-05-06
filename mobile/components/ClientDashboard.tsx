@@ -155,9 +155,9 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({ user, allClean
         return !hasBasicInfo;
     }, [user]);
     
-    // Set initial tab - if profile is incomplete, always start with profile, otherwise use initialTab or 'find'
+    // Set initial tab - if profile is incomplete, always start with profile, otherwise use initialTab or 'jobs'
     const [activeTab, setActiveTab] = useState<'find' | 'bookings' | 'messages' | 'support' | 'profile' | 'verification' | 'jobs' | 'notifications'>(
-        isProfileIncomplete ? 'profile' : (initialTab || 'find')
+        isProfileIncomplete ? 'profile' : (initialTab || 'jobs')
     );
     const [showProfileCompletion, setShowProfileCompletion] = useState(isProfileIncomplete);
     
