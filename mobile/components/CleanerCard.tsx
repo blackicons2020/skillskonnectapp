@@ -56,20 +56,29 @@ export const CleanerCard: React.FC<CleanerCardProps> = ({ cleaner, onClick }) =>
                 💼 {cleaner.experience} {cleaner.experience === 1 ? 'year' : 'years'} experience
             </p>
         )}
-        {cleaner.serviceTypes && cleaner.serviceTypes.length > 0 && (
+        {/* Services/Skills Display */}
+        {(() => {
+          // Support multiple field names for skills/services for backward compatibility
+          const rawServices = cleaner.services || (cleaner as any).skillType || cleaner.serviceTypes || [];
+          const services = Array.isArray(rawServices) ? rawServices : [rawServices].filter(Boolean);
+          
+          if (services.length === 0) return null;
+
+          return (
             <div className="flex flex-wrap gap-1 mt-2">
-                {cleaner.serviceTypes.slice(0, 2).map((service, idx) => (
-                    <span key={idx} className="inline-block bg-blue-50 text-blue-700 text-xs px-2 py-0.5 rounded-full">
-                        {service}
-                    </span>
-                ))}
-                {cleaner.serviceTypes.length > 2 && (
-                    <span className="text-xs text-gray-400 self-center">
-                        +{cleaner.serviceTypes.length - 2} more
-                    </span>
-                )}
+              {services.slice(0, 2).map((service, idx) => (
+                <span key={idx} className="inline-block bg-blue-50 text-blue-700 text-xs px-2 py-0.5 rounded-full">
+                  {service}
+                </span>
+              ))}
+              {services.length > 2 && (
+                <span className="text-xs text-gray-400 self-center">
+                  +{services.length - 2} more
+                </span>
+              )}
             </div>
-        )}
+          );
+        })()}
          <div className="mt-2">
             {pricingModel === 'hourly' ? (
                 cleaner.chargeHourly ? (

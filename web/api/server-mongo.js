@@ -409,7 +409,7 @@ const verifyAdmin = async (req) => {
   return dbUser && (dbUser.isAdmin || dbUser.role === 'admin' || dbUser.role === 'super-admin');
 };
 
-const authenticateToken = (req, res, next) => {
+const authenticateToken = async (req, res, next) => {
   try {
     const authHeader = req.headers['authorization'];
     const token = authHeader && authHeader.split(' ')[1];
@@ -420,14 +420,22 @@ const authenticateToken = (req, res, next) => {
 
     const decoded = jwt.verify(token, JWT_SECRET);
     req.user = {
+      id: decoded.id,
       email: decoded.email,
       userType: decoded.userType,
       role: decoded.role || decoded.userType || 'user',
       isAdmin: decoded.isAdmin || false
     };
 
+    // Robustness: if id is missing (legacy token), look it up in DB once and attach it
+    if (!req.user.id && req.user.email) {
+       const dbUser = await User.findOne({ email: req.user.email }).select('_id');
+       if (dbUser) req.user.id = dbUser._id.toString();
+    }
+
     next();
   } catch (error) {
+    console.error('Auth error:', error.message);
     return res.status(403).json({ error: 'Invalid or expired token' });
   }
 };
