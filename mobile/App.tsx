@@ -434,6 +434,17 @@ const App: React.FC = () => {
     const handleAuthSuccess = async (userData: User, shouldNavigate = true, skipRefetch = false) => {
         setUser(userData);
 
+        // Check if profile is incomplete to set initial tab
+        const isIncomplete = userData.isProfileComplete === false || 
+                            !(userData.phoneNumber && userData.phoneNumber.trim() !== '') ||
+                            !(userData.country && userData.country.trim() !== '');
+        
+        if (isIncomplete) {
+            setDashboardInitialTab('profile');
+        } else {
+            setDashboardInitialTab(null);
+        }
+
         // Navigate IMMEDIATELY so the auth modal disappears right away
         if (shouldNavigate) {
             if (cleanerToRememberForBooking) {
