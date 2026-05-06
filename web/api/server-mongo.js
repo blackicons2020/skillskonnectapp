@@ -448,7 +448,7 @@ app.post('/api/auth/signup', async (req, res) => {
     }
 
     const hashedPassword = await bcrypt.hash(password, 8);
-    const role = userType === 'admin' ? 'admin' : 'user';
+    const role = req.body.role || (userType === 'admin' ? 'admin' : (userType === 'worker' || userType === 'cleaner' ? 'cleaner' : 'client'));
 
     const newUser = await User.create({
       email,
@@ -1603,7 +1603,7 @@ app.post('/api/auth/register', async (req, res) => {
     }
 
     const hashedPassword = await bcrypt.hash(password, 8);
-    const role = userType === 'admin' ? 'admin' : 'user';
+    const role = req.body.role || (userType === 'admin' ? 'admin' : (userType === 'worker' || userType === 'cleaner' ? 'cleaner' : 'client'));
 
     const newUser = await User.create({
       email,
